@@ -13,6 +13,7 @@
 		"changeset:check": "node scripts/check-changesets.mjs",
 		"version": "node scripts/version.mjs",
 		"versions:check": "node scripts/check-versions.mjs",
+		"release:perso": "node scripts/release-perso.mjs",
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"typecheck": "tsc -noEmit -skipLibCheck",
