@@ -490,6 +490,85 @@
 	margin-top: 0;
 }
 
+/* Sub-pages: indented under their parent, with a guide line on the left. */
+.obk-card {
+	position: relative;
+}
+
+.obk-card--subpage {
+	margin-left: calc(var(--obk-depth, 1) * var(--obk-subpage-indent, 16px));
+}
+
+.obk-card--subpage::before {
+	content: "";
+	position: absolute;
+	left: calc(var(--obk-subpage-indent, 16px) / -2);
+	top: -8px;
+	bottom: 50%;
+	width: 2px;
+	border-radius: 1px;
+	background: var(--background-modifier-border-hover);
+	pointer-events: none;
+}
+
+.obk-card--group-hidden {
+	display: none;
+}
+
+.obk-card-parent-pill {
+	display: inline-block;
+	max-width: 100%;
+	margin-bottom: 4px;
+	padding: 0 6px;
+	overflow: hidden;
+	border-radius: 8px;
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.obk-card-parent-pill:hover {
+	color: var(--text-normal);
+}
+
+.obk-card-add-child {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 4px;
+	color: var(--text-muted);
+	opacity: 0;
+	cursor: pointer;
+}
+
+.obk-card-add-child svg {
+	width: 14px;
+	height: 14px;
+}
+
+.obk-card--hover .obk-card-add-child,
+.obk-card-add-child:focus-visible {
+	opacity: 1;
+}
+
+.obk-card-add-child:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+@media (any-pointer: coarse) {
+	.obk-card-add-child {
+		opacity: 1;
+	}
+}
+
 .obk-card-cover {
 	display: block;
 	/* Bleed the cover to the card's inner border edge. Card has padding: 12px,

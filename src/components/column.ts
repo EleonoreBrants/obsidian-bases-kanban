@@ -2,7 +2,7 @@ import type { BasesEntry, MetadataCache } from 'obsidian';
 import { setIcon } from 'obsidian';
 import { COLOR_PALETTE, CSS_CLASSES, DATA_ATTRIBUTES } from '../constants.ts';
 import { resolveWikilinkDisplay } from '../utils/wikilink.ts';
-import { createCard, computeCardFingerprint, type CardRenderCtx, type CardCallbacks } from './card.ts';
+import { applyCardDepth, createCard, computeCardFingerprint, type CardRenderCtx, type CardCallbacks } from './card.ts';
 
 export interface ColumnRenderCtx {
 	card: CardRenderCtx;
@@ -187,6 +187,7 @@ export function patchColumnCards(
 		const fp = computeCardFingerprint(entry, ctx.card);
 		const existing = existingCards.get(entry.file.path);
 		if (existing && ctx.cardFingerprints.get(entry.file.path) === fp) {
+			if (ctx.card.subpages.enabled) applyCardDepth(existing, ctx.card.subpages.info.get(entry.file.path));
 			return;
 		}
 		const newCard = createCard(entry, ctx.card, ctx.cardCb);

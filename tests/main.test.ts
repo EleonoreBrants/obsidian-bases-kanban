@@ -89,6 +89,42 @@ describe('Plugin Registration', () => {
 		assert.ok(view instanceof KanbanView, 'Factory should return KanbanView instance');
 	});
 
+	test('rebuilds already-open boards only when the plugin is reloaded in a running app', async () => {
+		const makeLeaf = (type: string, withBoard: boolean) => {
+			const containerEl = createDivWithMethods();
+			if (withBoard) createDivWithMethods(containerEl).className = 'obk-view-container';
+			const calls: number[] = [];
+			return {
+				calls,
+				leaf: {
+					view: { getViewType: () => type, containerEl },
+					rebuildView: async (): Promise<void> => {
+						calls.push(1);
+					},
+				},
+			};
+		};
+		const run = async (layoutReady: boolean) => {
+			const kanban = makeLeaf('bases', true);
+			const otherBase = makeLeaf('bases', false);
+			const note = makeLeaf('markdown', true);
+			const app = {
+				workspace: {
+					layoutReady,
+					iterateAllLeaves: (cb: (leaf: unknown) => void) => [kanban, otherBase, note].forEach((l) => cb(l.leaf)),
+				},
+			};
+			const plugin = new KanbanBasesViewPlugin(app as any, {} as any);
+			plugin.loadData = async () => null;
+			plugin.registerBasesView = () => null;
+			plugin.registerHoverLinkSource = () => undefined;
+			await plugin.onload();
+			return [kanban.calls.length, otherBase.calls.length, note.calls.length];
+		};
+		assert.deepStrictEqual(await run(true), [1, 0, 0]);
+		assert.deepStrictEqual(await run(false), [0, 0, 0]);
+	});
+
 	test('Plugin unloads cleanly', () => {
 		const plugin = new KanbanBasesViewPlugin({} as any, {} as any);
 

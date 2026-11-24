@@ -3,9 +3,12 @@ import { BasesView, Keymap, Notice, normalizePath, parsePropertyId } from 'obsid
 import {
 	createCard as createCardEl,
 	computeCardFingerprint,
+	applyCardDepth,
 	type CardRenderCtx,
 	type CardCallbacks,
 } from './components/card.ts';
+import { QuickAddModal } from './quickAddModal.ts';
+import { arrangeSubpages, parseParentLinkText, type SubpageInfo } from './utils/subpages.ts';
 import {
 	createAddButton as createAddButtonEl,
 	createQuickAddCard as createQuickAddCardEl,
@@ -112,6 +115,13 @@ export class KanbanView extends BasesView {
 	private swimlaneByPropertyId: BasesPropertyId | null = null;
 	private cardTitlePropertyId: BasesPropertyId | null = null;
 	private imagePropertyId: BasesPropertyId | null = null;
+	private _subpageParentPropertyId: BasesPropertyId | null = null;
+	private _lastSubpageParentPropertyId: BasesPropertyId | null | undefined = undefined;
+	// path -> parent note path, for every entry whose parent link resolves to a note.
+	private _parentOf: Map<string, string> = new Map();
+	private _subpageInfo: Map<string, SubpageInfo> = new Map();
+	// Cards hidden while their parent is dragged; they follow it on drop.
+	private _dragGroup: { item: HTMLElement; members: HTMLElement[] } | null = null;
 	private _columnSortables: Map<string, Sortable> = new Map();
 	private _entryMap: Map<string, BasesEntry> = new Map();
 	private swimlaneSortable: Sortable | null = null;
@@ -247,6 +257,9 @@ export class KanbanView extends BasesView {
 		this.swimlaneByPropertyId = this.config.getAsPropertyId('swimlaneByProperty');
 		this.cardTitlePropertyId = this.config.getAsPropertyId('cardTitleProperty');
 		this.imagePropertyId = this.config.getAsPropertyId('imageProperty');
+		const subpageProperty = this.config.getAsPropertyId('subpageParentProperty');
+		// Hierarchy only works on a property of the note, which is also what "+" writes.
+		this._subpageParentPropertyId = subpageProperty && !subpageProperty.startsWith('file.') ? subpageProperty : null;
 	}
 
 	private triggerHoverPreview(linktext: string, sourcePath: string, event: MouseEvent, targetEl: HTMLElement): void {
@@ -440,6 +453,7 @@ export class KanbanView extends BasesView {
 
 			// Build path→entry lookup map for O(1) access in handleCardDrop
 			this._entryMap = new Map(entries.map((e: BasesEntry) => [e.file.path, e]));
+			this._refreshSubpageParents(entries);
 
 			// Group entries — 2D when swimlanes are active, 1D otherwise. The
 			// column-axis preference logic (order, colors, new-value detection)
@@ -481,6 +495,17 @@ export class KanbanView extends BasesView {
 						groupedEntries.set(value, this.applyCardOrder(columnEntries, savedOrder));
 					}
 				});
+			}
+
+			if (this._subpageParentPropertyId) {
+				const arrangeCell = (cellEntries: BasesEntry[]): BasesEntry[] => this._arrangeSubpageCell(cellEntries);
+				if (groupedByLane) {
+					groupedByLane.forEach((columns) => {
+						columns.forEach((cellEntries, columnValue) => columns.set(columnValue, arrangeCell(cellEntries)));
+					});
+				} else {
+					groupedEntries.forEach((cellEntries, columnValue) => groupedEntries.set(columnValue, arrangeCell(cellEntries)));
+				}
 			}
 
 			// Merge any newly-seen column values into prefs and persist eagerly.
@@ -547,9 +572,16 @@ export class KanbanView extends BasesView {
 			const rawBannerHeight = Number(this.config?.get('bannerHeight'));
 			const bannerHeight = Number.isFinite(rawBannerHeight) && rawBannerHeight > 0 ? rawBannerHeight : 6;
 			this.containerEl.style.setProperty('--obk-banner-height', `${bannerHeight}px`);
+			const rawIndent = Number(this.config?.get('subpageIndent'));
+			const subpageIndent = Number.isFinite(rawIndent) && rawIndent > 0 ? rawIndent : 16;
+			this.containerEl.style.setProperty('--obk-subpage-indent', `${subpageIndent}px`);
+
+			const subpagePropertyChanged = this._subpageParentPropertyId !== this._lastSubpageParentPropertyId;
+			this._lastSubpageParentPropertyId = this._subpageParentPropertyId;
 
 			const existingBoard = this.containerEl.querySelector<HTMLElement>(`.${CSS_CLASSES.BOARD}`);
 			const optionsChanged =
+				subpagePropertyChanged ||
 				colorRulesChanged ||
 				orderChanged ||
 				wrapChanged ||
@@ -1141,6 +1173,120 @@ export class KanbanView extends BasesView {
 		});
 	}
 
+	/** Resolve each entry's parent link to a note path and reset the per-render hierarchy info. */
+	private _refreshSubpageParents(entries: BasesEntry[]): void {
+		this._parentOf = new Map();
+		this._subpageInfo = new Map();
+		const propertyId = this._subpageParentPropertyId;
+		if (!propertyId) return;
+		for (const entry of entries) {
+			const linkText = parseParentLinkText(entry.getValue(propertyId));
+			if (!linkText) continue;
+			const parent = this.app.metadataCache.getFirstLinkpathDest(linkText, entry.file.path);
+			if (parent) this._parentOf.set(entry.file.path, parent.path);
+		}
+	}
+
+	/** Order one cell's entries parent-first and record each card's depth. */
+	private _arrangeSubpageCell(cellEntries: BasesEntry[]): BasesEntry[] {
+		const { order, info } = arrangeSubpages(
+			cellEntries.map((entry) => entry.file.path),
+			this._parentOf,
+		);
+		info.forEach((value, path) => this._subpageInfo.set(path, value));
+		const byPath = new Map(cellEntries.map((entry) => [entry.file.path, entry]));
+		return order.map((path) => byPath.get(path)).filter((entry): entry is BasesEntry => entry !== undefined);
+	}
+
+	/** Re-sort a column body's cards parent-first and refresh their depth. */
+	private _normalizeSubpageDom(bodyEl: HTMLElement): void {
+		if (!this._subpageParentPropertyId) return;
+		const cards = Array.from(bodyEl.children).filter(
+			(el): el is HTMLElement => el.instanceOf(HTMLElement) && el.classList.contains(CSS_CLASSES.CARD),
+		);
+		const byPath = new Map<string, HTMLElement>();
+		for (const card of cards) {
+			const path = card.getAttribute(DATA_ATTRIBUTES.ENTRY_PATH);
+			if (path) byPath.set(path, card);
+		}
+		const { order, info } = arrangeSubpages([...byPath.keys()], this._parentOf);
+		let next = bodyEl.firstElementChild;
+		for (const path of order) {
+			const card = byPath.get(path);
+			if (!card) continue;
+			if (card !== next) bodyEl.insertBefore(card, next);
+			next = card.nextElementSibling;
+			applyCardDepth(card, info.get(path));
+		}
+	}
+
+	/** Hide the cards nested under `item` so the whole group can be dragged as one. */
+	private _beginGroupDrag(item: HTMLElement): void {
+		this._dragGroup = null;
+		if (!this._subpageParentPropertyId) return;
+		const depth = Number(item.getAttribute(DATA_ATTRIBUTES.SUBPAGE_DEPTH) ?? 0);
+		const members: HTMLElement[] = [];
+		let next = item.nextElementSibling;
+		while (next?.instanceOf(HTMLElement) && next.classList.contains(CSS_CLASSES.CARD)) {
+			if (Number(next.getAttribute(DATA_ATTRIBUTES.SUBPAGE_DEPTH) ?? 0) <= depth) break;
+			members.push(next);
+			next = next.nextElementSibling;
+		}
+		members.forEach((member) => member.classList.add(CSS_CLASSES.CARD_GROUP_HIDDEN));
+		this._dragGroup = { item, members };
+	}
+
+	/**
+	 * Put the hidden group back right after the dropped card, then re-sort both
+	 * affected columns so a card dropped inside or away from a group snaps into place.
+	 * Returns the paths of the cards that travelled with the dropped card.
+	 */
+	private _finishGroupDrag(evt: Sortable.SortableEvent): string[] {
+		const group = this._dragGroup;
+		this._dragGroup = null;
+		if (!group || group.item !== evt.item) return [];
+		let anchor: HTMLElement = group.item;
+		const ownsTarget = this.ownsCardContainer(evt.to);
+		for (const member of group.members) {
+			member.classList.remove(CSS_CLASSES.CARD_GROUP_HIDDEN);
+			if (!ownsTarget) continue;
+			anchor.after(member);
+			anchor = member;
+		}
+		if (!ownsTarget) return [];
+		this._normalizeSubpageDom(evt.to);
+		if (evt.from !== evt.to) this._normalizeSubpageDom(evt.from);
+		return group.members
+			.map((member) => member.getAttribute(DATA_ATTRIBUTES.ENTRY_PATH))
+			.filter((path): path is string => path !== null);
+	}
+
+	private _addSubpage(cardEl: HTMLElement, parentFile: TFile): void {
+		const propertyId = this._subpageParentPropertyId;
+		const parentName = propertyId ? parsePropertyId(propertyId).name : null;
+		const columnValue = cardEl.closest(`.${CSS_CLASSES.COLUMN}`)?.getAttribute(DATA_ATTRIBUTES.COLUMN_VALUE);
+		if (!parentName || !columnValue) return;
+		const swimlaneValue =
+			cardEl.closest(`.${CSS_CLASSES.SWIMLANE}`)?.getAttribute(DATA_ATTRIBUTES.SWIMLANE_VALUE) ?? null;
+
+		// Use the shortest unambiguous link so the property still resolves to this note.
+		const resolved = this.app.metadataCache.getFirstLinkpathDest(parentFile.basename, '');
+		const target = resolved?.path === parentFile.path ? parentFile.basename : parentFile.path.replace(/\.md$/i, '');
+		const folder = this.getQuickAddFolder() ?? parentFile.parent?.path ?? '/';
+		const ctx = { ...this._buildQuickAddCtx(), quickAddFolder: folder };
+
+		new QuickAddModal(this.app, {
+			columnValue,
+			swimlaneValue,
+			heading: `Add sub-page to ${parentFile.basename}`,
+			onSubmit: (title) =>
+				createQuickAddCardEl(title, columnValue, swimlaneValue, ctx, this._buildQuickAddCallbacks(), {
+					propertyName: parentName,
+					link: `[[${target}]]`,
+				}),
+		}).open();
+	}
+
 	/** Re-parse the "Color rules" option; returns true when it changed since the last render. */
 	private _refreshColorRules(): boolean {
 		const raw: unknown = this.config?.get('colorRules');
@@ -1156,6 +1302,7 @@ export class KanbanView extends BasesView {
 	private _buildCardCtx(): CardRenderCtx {
 		return {
 			colorRules: this._colorRules,
+			subpages: { enabled: this._subpageParentPropertyId !== null, info: this._subpageInfo },
 			app: this.app,
 			component: this,
 			groupByPropertyId: this.groupByPropertyId,
@@ -1174,6 +1321,7 @@ export class KanbanView extends BasesView {
 			onHoverPreview: (lt, sp, e, el) => this.triggerHoverPreview(lt, sp, e, el),
 			onSetActiveCard: (path) => this.setActiveCard(path),
 			onOpenInBackgroundTab: (file) => this.openInBackgroundTab(file),
+			onAddChild: (cardEl, file) => this._addSubpage(cardEl, file),
 		};
 	}
 
@@ -1380,18 +1528,22 @@ export class KanbanView extends BasesView {
 			chosenClass: CSS_CLASSES.CARD_CHOSEN,
 			onStart: (evt: Sortable.SortableEvent) => {
 				this._dragging = true;
-				if (evt.item.instanceOf(HTMLElement)) evt.item.classList.remove(CSS_CLASSES.CARD_HOVER);
+				if (evt.item.instanceOf(HTMLElement)) {
+					evt.item.classList.remove(CSS_CLASSES.CARD_HOVER);
+					this._beginGroupDrag(evt.item);
+				}
 			},
 			onEnd: (evt: Sortable.SortableEvent) => {
 				this._dragging = false;
 				this.setActiveCard(null);
-				void this.handleCardDrop(evt);
+				const groupPaths = this._finishGroupDrag(evt);
+				void this.handleCardDrop(evt, groupPaths);
 			},
 		});
 		this._columnSortables.set(value, sortable);
 	}
 
-	private async handleCardDrop(evt: Sortable.SortableEvent): Promise<void> {
+	private async handleCardDrop(evt: Sortable.SortableEvent, groupPaths: string[] = []): Promise<void> {
 		if (!evt.item.instanceOf(HTMLElement)) {
 			console.warn('Card element is not an HTMLElement:', evt.item);
 			return;
@@ -1486,9 +1638,11 @@ export class KanbanView extends BasesView {
 			// behind its writes too, so the chain of cells it can still report
 			// grows with each drop.
 			if (oldKey !== newKey) {
-				const prior = this._pendingMoves.get(entryPath);
-				const intermediateKeys = prior ? [...new Set([...prior.intermediateKeys, prior.toKey, oldKey])] : [oldKey];
-				this._pendingMoves.set(entryPath, { intermediateKeys, toKey: newKey });
+				for (const path of [entryPath, ...groupPaths]) {
+					const prior = this._pendingMoves.get(path);
+					const intermediateKeys = prior ? [...new Set([...prior.intermediateKeys, prior.toKey, oldKey])] : [oldKey];
+					this._pendingMoves.set(path, { intermediateKeys, toKey: newKey });
+				}
 			}
 			this._persistPrefs();
 		}
@@ -1514,25 +1668,31 @@ export class KanbanView extends BasesView {
 			const swimlanePropertyName = swimlaneCrossed ? parsePropertyId(swimlanePropertyId).name : null;
 			const swimlaneValueToSet = swimlaneCrossed && newLaneValue !== UNCATEGORIZED_LABEL ? newLaneValue : '';
 
-			await this.app.fileManager.processFrontMatter(entry.file, (frontmatter: Record<string, unknown>) => {
-				if (columnValueToSet === '') {
-					delete frontmatter[columnPropertyName];
-				} else {
-					frontmatter[columnPropertyName] = columnValueToSet;
-				}
-				if (swimlanePropertyName) {
-					if (swimlaneValueToSet === '') {
-						delete frontmatter[swimlanePropertyName];
-					} else {
-						frontmatter[swimlanePropertyName] = swimlaneValueToSet;
-					}
-				}
-			});
+			await Promise.all(
+				[entry, ...groupPaths.map((path) => this._entryMap.get(path))]
+					.filter((moved): moved is BasesEntry => moved !== undefined)
+					.map((moved) =>
+						this.app.fileManager.processFrontMatter(moved.file, (frontmatter: Record<string, unknown>) => {
+							if (columnValueToSet === '') {
+								delete frontmatter[columnPropertyName];
+							} else {
+								frontmatter[columnPropertyName] = columnValueToSet;
+							}
+							if (swimlanePropertyName) {
+								if (swimlaneValueToSet === '') {
+									delete frontmatter[swimlanePropertyName];
+								} else {
+									frontmatter[swimlanePropertyName] = swimlaneValueToSet;
+								}
+							}
+						}),
+					),
+			);
 		} catch (error) {
 			console.error('Error updating entry property:', error);
 			// The write failed, so the card never moved; drop the pending move
 			// so the render below reconciles the saved order back immediately.
-			this._pendingMoves.delete(entryPath);
+			for (const path of [entryPath, ...groupPaths]) this._pendingMoves.delete(path);
 			this.render();
 		}
 	}
@@ -1849,6 +2009,22 @@ export class KanbanView extends BasesView {
 				min: 0.25,
 				max: 2.5,
 				step: 0.05,
+			},
+			{
+				displayName: 'Sub-page parent property',
+				type: 'property',
+				key: 'subpageParentProperty',
+				filter: (prop: string) => !prop.startsWith('file.'),
+				placeholder: 'Optional: link to the parent page',
+			},
+			{
+				displayName: 'Sub-page indent (px)',
+				type: 'slider',
+				key: 'subpageIndent',
+				default: 16,
+				min: 8,
+				max: 40,
+				step: 2,
 			},
 			{
 				displayName: 'Color rules',

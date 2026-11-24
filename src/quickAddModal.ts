@@ -5,6 +5,8 @@ import { CSS_CLASSES } from './constants.ts';
 export interface QuickAddModalOptions {
 	columnValue: string;
 	swimlaneValue: string | null;
+	/** Replaces the default "Add card to …" title. */
+	heading?: string;
 	onSubmit: (title: string) => Promise<void> | void;
 }
 
@@ -20,8 +22,10 @@ export class QuickAddModal extends Modal {
 	}
 
 	onOpen(): void {
-		const { columnValue, swimlaneValue } = this.options;
-		this.setTitle(swimlaneValue ? `Add card to ${swimlaneValue} / ${columnValue}` : `Add card to ${columnValue}`);
+		const { columnValue, swimlaneValue, heading } = this.options;
+		this.setTitle(
+			heading ?? (swimlaneValue ? `Add card to ${swimlaneValue} / ${columnValue}` : `Add card to ${columnValue}`),
+		);
 
 		const formEl = this.contentEl.createEl('form', { cls: CSS_CLASSES.QUICK_ADD_FORM });
 		this.input = new TextComponent(formEl);

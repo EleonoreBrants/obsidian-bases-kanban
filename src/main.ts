@@ -1,8 +1,25 @@
+import type { App, WorkspaceLeaf } from 'obsidian';
 import { Plugin } from 'obsidian';
-import { HOVER_LINK_SOURCE_ID } from './constants.ts';
+import { CSS_CLASSES, HOVER_LINK_SOURCE_ID } from './constants.ts';
 import { KanbanView, type LegacyData, isRecord, isColumnOrders, isColumnColors } from './kanbanView.ts';
 
 export const KANBAN_VIEW_TYPE = 'kanban-view';
+
+function hasRebuildView(leaf: WorkspaceLeaf): leaf is WorkspaceLeaf & { rebuildView: () => Promise<void> } {
+	return 'rebuildView' in leaf && typeof leaf.rebuildView === 'function';
+}
+
+/**
+ * When the plugin is reloaded in place (for example by a BRAT update), boards that
+ * are already open keep running the previous plugin code until their leaf is rebuilt.
+ */
+function rebuildOpenKanbanViews(app: App): void {
+	app.workspace.iterateAllLeaves((leaf) => {
+		if (leaf.view.getViewType() !== 'bases') return;
+		if (!leaf.view.containerEl.querySelector(`.${CSS_CLASSES.VIEW_CONTAINER}`)) return;
+		if (hasRebuildView(leaf)) void leaf.rebuildView();
+	});
+}
 
 /**
  * Reads column order and color data previously stored in plugin.data.json
@@ -59,6 +76,10 @@ export default class KanbanBasesViewPlugin extends Plugin {
 			},
 			options: KanbanView.getViewOptions,
 		});
+
+		// Layout already ready means the plugin was enabled or reloaded while the app is running.
+		const workspace: App['workspace'] | undefined = this.app.workspace;
+		if (workspace?.layoutReady) rebuildOpenKanbanViews(this.app);
 	}
 
 	onunload() {

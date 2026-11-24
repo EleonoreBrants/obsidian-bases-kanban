@@ -32,6 +32,7 @@ export const SORTED_CARD_ORDER_NOTICE = '⚠️ Sort is active. Clear it to manu
 export const DATA_ATTRIBUTES = {
 	COLUMN_VALUE: 'data-column-value',
 	ENTRY_PATH: 'data-entry-path',
+	SUBPAGE_DEPTH: 'data-subpage-depth',
 	SORTABLE_CONTAINER: 'data-sortable-container',
 	COLUMN_POSITION: 'data-column-position',
 	COLUMN_COLOR: 'data-column-color',
@@ -93,6 +94,10 @@ export const CSS_CLASSES = {
 	CARD_COVER_FIT_COVER: 'obk-card-cover--fit-cover',
 	CARD_COVER_FIT_CONTAIN: 'obk-card-cover--fit-contain',
 	CARD_ACTIVE: 'obk-card--active',
+	CARD_SUBPAGE: 'obk-card--subpage',
+	CARD_GROUP_HIDDEN: 'obk-card--group-hidden',
+	CARD_PARENT_PILL: 'obk-card-parent-pill',
+	CARD_ADD_CHILD: 'obk-card-add-child',
 	CARD_HOVER: 'obk-card--hover',
 	CARD_DRAGGING: 'obk-card-dragging',
 	CARD_GHOST: 'obk-card-ghost',

@@ -1,10 +1,17 @@
 import type { App, BasesEntry, BasesPropertyId, Component } from 'obsidian';
-import { Keymap, MarkdownRenderer, NullValue, StringValue } from 'obsidian';
+import { Keymap, MarkdownRenderer, NullValue, StringValue, setIcon } from 'obsidian';
 import type { TFile } from 'obsidian';
 import { CSS_CLASSES, DATA_ATTRIBUTES } from '../constants.ts';
 import { findRuleColor, type ColorRule } from '../utils/colorRules.ts';
+import { MAX_RENDERED_DEPTH, type SubpageInfo } from '../utils/subpages.ts';
+
+export interface SubpageRenderCtx {
+	enabled: boolean;
+	info: Map<string, SubpageInfo>;
+}
 
 export interface CardRenderCtx {
+	subpages: SubpageRenderCtx;
 	colorRules: ColorRule[];
 	app: App;
 	component: Component;
@@ -22,6 +29,20 @@ export interface CardCallbacks {
 	onHoverPreview: (linktext: string, sourcePath: string, event: MouseEvent, targetEl: HTMLElement) => void;
 	onSetActiveCard: (path: string | null) => void;
 	onOpenInBackgroundTab: (file: TFile) => void;
+	onAddChild: (cardEl: HTMLElement, file: TFile) => void;
+}
+
+export function applyCardDepth(cardEl: HTMLElement, info: SubpageInfo | undefined): void {
+	const depth = info?.depth ?? 0;
+	if (depth === 0) {
+		cardEl.removeAttribute(DATA_ATTRIBUTES.SUBPAGE_DEPTH);
+		cardEl.style.removeProperty('--obk-depth');
+		cardEl.classList.remove(CSS_CLASSES.CARD_SUBPAGE);
+		return;
+	}
+	cardEl.setAttribute(DATA_ATTRIBUTES.SUBPAGE_DEPTH, String(depth));
+	cardEl.style.setProperty('--obk-depth', String(Math.min(depth, MAX_RENDERED_DEPTH)));
+	cardEl.classList.add(CSS_CLASSES.CARD_SUBPAGE);
 }
 
 export function computeCardFingerprint(entry: BasesEntry, ctx: CardRenderCtx): string {
@@ -40,6 +61,7 @@ export function computeCardFingerprint(entry: BasesEntry, ctx: CardRenderCtx): s
 		parts.push(val === null ? '' : val.toString());
 	}
 	parts.push(getCardBannerColor(entry, ctx) ?? '');
+	if (ctx.subpages.enabled) parts.push(ctx.subpages.info.get(entry.file.path)?.orphanParentPath ?? '');
 	return parts.join('\x00');
 }
 
@@ -117,6 +139,36 @@ export function createCard(entry: BasesEntry, ctx: CardRenderCtx, cb: CardCallba
 
 	const titleEl = cardEl.createDiv({ cls: CSS_CLASSES.CARD_TITLE });
 	renderCardTitle(titleEl, entry, ctx);
+
+	if (ctx.subpages.enabled) {
+		const subpageInfo = ctx.subpages.info.get(filePath);
+		applyCardDepth(cardEl, subpageInfo);
+		const orphanParent = subpageInfo?.orphanParentPath;
+		if (orphanParent) {
+			const parentName = orphanParent.split('/').pop()?.replace(/\.md$/i, '') ?? orphanParent;
+			const pill = cardEl.createDiv({ cls: CSS_CLASSES.CARD_PARENT_PILL, text: `↳ ${parentName}` });
+			pill.setAttribute('title', `Parent: ${parentName}`);
+			pill.addEventListener('click', (e) => {
+				e.stopPropagation();
+				void ctx.app.workspace.openLinkText(orphanParent, '', Keymap.isModEvent(e));
+			});
+		}
+		const addBtn = cardEl.createDiv({ cls: CSS_CLASSES.CARD_ADD_CHILD });
+		addBtn.setAttribute('role', 'button');
+		addBtn.setAttribute('tabindex', '0');
+		addBtn.setAttribute('aria-label', `Add sub-page to ${entry.file.basename}`);
+		setIcon(addBtn, 'plus');
+		const addChild = (e: Event) => {
+			e.stopPropagation();
+			e.preventDefault();
+			cb.onAddChild(cardEl, entry.file);
+		};
+		addBtn.addEventListener('click', addChild);
+		addBtn.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' || e.key === ' ') addChild(e);
+		});
+		addBtn.addEventListener('auxclick', (e) => e.stopPropagation());
+	}
 
 	for (const propertyId of ctx.order) {
 		if (propertyId === ctx.groupByPropertyId) continue;

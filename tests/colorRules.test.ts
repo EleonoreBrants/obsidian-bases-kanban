@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { computeCardFingerprint, createCard } from '../src/components/card.ts';
 import { KanbanView } from '../src/kanbanView.ts';
 import { findRuleColor, parseColorRules } from '../src/utils/colorRules.ts';
-import { ListValue, LinkValue, NumberValue, StringValue } from './mocks/obsidian.ts';
+import { ListValue, LinkValue, NullValue, NumberValue, StringValue } from './mocks/obsidian.ts';
 import {
 	createDivWithMethods,
 	createMockApp,
@@ -53,11 +53,24 @@ test('rules compare case-insensitively and match list items and link targets', (
 	assert.equal(colorFor('Tags = b', new ListValue([new StringValue('a'), new StringValue('b')])), 'green');
 	assert.equal(colorFor('Parent = Alpha', new StringValue('[[Folder/Alpha#Heading|Shown]]')), 'green');
 	assert.equal(colorFor('Parent = Shown', new LinkValue('[[Folder/Alpha|Shown]]')), 'green');
+	assert.equal(colorFor('Projet = [[🛰️D3SIR - Main]]', new StringValue('[[Notes/🛰️D3SIR - Main]]')), 'green');
+	assert.equal(colorFor('Projet = 🛰️D3SIR - Main', new LinkValue('[[🛰️D3SIR - Main]]')), 'green');
+	assert.equal(colorFor('Projet contains D3SIR', new StringValue('[[🛰️D3SIR - Main]]')), 'green');
+	assert.equal(colorFor('Projet contains D3SIR', new ListValue([new StringValue('[[Autre]]')])), null);
 	assert.equal(colorFor('Projet = alpha', new StringValue('beta')), null);
 });
 
 test('!=, empty and !empty treat missing values as empty', () => {
 	assert.equal(colorFor('Statut != Done', null), 'green');
+	// Bases reports a missing property as NullValue, whose text is "null".
+	class BasesNull extends NullValue {
+		toString() {
+			return 'null';
+		}
+	}
+	assert.equal(colorFor('Statut empty', new BasesNull()), 'green');
+	assert.equal(colorFor('Statut != Done', new BasesNull()), 'green');
+	assert.equal(colorFor('Statut contains null', new BasesNull()), null);
 	assert.equal(colorFor('Statut != Done', new StringValue('done')), null);
 	assert.equal(colorFor('Statut empty', new StringValue('  ')), 'green');
 	assert.equal(colorFor('Statut !empty', null), null);

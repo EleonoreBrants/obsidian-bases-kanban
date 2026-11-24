@@ -109,6 +109,26 @@ Notes empty -> gray
 - Colors: CSS names, hex, `rgb()`/`hsl()` or `var(--…)`. Invalid rules are ignored
   and listed in the developer console.
 
+### Sub-pages
+
+Select a link property (for example **Parent**, holding `[[Parent page]]`) in
+**Sub-page parent property** to nest child pages under their parent. Leave it empty
+to turn the feature off.
+
+- A child sits directly under its parent, indented (**Sub-page indent (px)** or the
+  `--obk-subpage-indent` CSS variable), up to four levels deep. Nesting only applies
+  between cards in the same column and swimlane; a child whose parent is elsewhere stays
+  a normal card with a **↳ Parent** pill that opens the parent.
+- Siblings keep their manual order or follow the Base sort.
+- Dragging a parent moves its whole group; dropping it in another column or swimlane
+  updates the group property of every card in the group. A child dragged inside its
+  group reorders among its siblings, and one dropped elsewhere in the column snaps back
+  under its parent. Dragging a child to another column changes only that card; its parent
+  link is never rewritten.
+- Hover a card (always visible on touch devices) and select **+** to add a sub-page.
+  It is created in the **Add card to column folder** folder, or next to the parent when
+  that is not set, with the parent link and the parent's column and swimlane.
+
 ### Example
 
 If your base has a "Status" property with values "To Do", "Doing", and "Done":

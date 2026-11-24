@@ -1,4 +1,5 @@
 import type { BasesPropertyId } from 'obsidian';
+import { NullValue } from 'obsidian';
 
 export type ColorRuleOperator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'contains' | 'empty' | '!empty';
 
@@ -121,11 +122,15 @@ function itemCandidates(text: string): string[] {
 }
 
 function valueStrings(value: RuleValue | null | undefined): string[][] {
-	if (!value) return [];
+	// Bases stringifies a missing property as "null"; it must count as empty.
+	if (!value || value instanceof NullValue) return [];
 	const items: string[] = [];
 	if (isListLike(value)) {
 		const count = value.length();
-		for (let i = 0; i < count; i++) items.push(value.get(i).toString());
+		for (let i = 0; i < count; i++) {
+			const item = value.get(i);
+			if (!(item instanceof NullValue)) items.push(item.toString());
+		}
 	} else {
 		items.push(value.toString());
 	}
@@ -143,7 +148,9 @@ function compare(left: string, right: string): number {
 
 export function ruleMatches(rule: ColorRule, value: RuleValue | null | undefined): boolean {
 	const items = valueStrings(value);
-	const expected = normalize(rule.value);
+	// A link written in the rule (`[[Note]]`) compares by note name, like the property value does.
+	const expectedCandidates = itemCandidates(rule.value);
+	const expected = expectedCandidates[0];
 	const any = (test: (candidate: string) => boolean) => items.some((candidates) => candidates.some(test));
 	switch (rule.operator) {
 		case 'empty':
@@ -151,9 +158,9 @@ export function ruleMatches(rule: ColorRule, value: RuleValue | null | undefined
 		case '!empty':
 			return items.length > 0;
 		case '=':
-			return any((c) => c === expected);
+			return any((c) => expectedCandidates.includes(c));
 		case '!=':
-			return !any((c) => c === expected);
+			return !any((c) => expectedCandidates.includes(c));
 		case 'contains':
 			return any((c) => c.includes(expected));
 		case '>':

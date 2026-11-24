@@ -149,6 +149,7 @@ export async function createQuickAddCard(
 	swimlaneValue: string | null,
 	ctx: QuickAddCtx,
 	cb: QuickAddCallbacks,
+	parent?: { propertyName: string; link: string },
 ): Promise<void> {
 	const baseFileName = sanitizeBaseFileName(title);
 	if (!baseFileName) {
@@ -186,6 +187,7 @@ export async function createQuickAddCard(
 		} else {
 			frontmatter[columnPropertyName] = columnValue;
 		}
+		if (parent) frontmatter[parent.propertyName] = parent.link;
 
 		if (!swimlaneValue || !swimlanePropertyName) return;
 		if (swimlaneValue === UNCATEGORIZED_LABEL) {
