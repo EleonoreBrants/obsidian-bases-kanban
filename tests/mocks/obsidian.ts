@@ -417,6 +417,10 @@ export class Notice {
 	hide(): void {}
 }
 
+export function parseYaml(text: string): unknown {
+	return JSON.parse(text);
+}
+
 export function normalizePath(path: string): string {
 	return path.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
 }

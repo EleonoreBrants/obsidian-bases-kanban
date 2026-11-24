@@ -2,6 +2,22 @@ import type { App, BasesPropertyId, EventRef, TFile } from 'obsidian';
 import { Notice, normalizePath, parsePropertyId, setIcon } from 'obsidian';
 import { QuickAddModal } from '../quickAddModal.ts';
 import { CSS_CLASSES, UNCATEGORIZED_LABEL } from '../constants.ts';
+import { removeOptionalFilterValues, setProperty, setPropertyIfEmpty } from '../utils/newCardProperties.ts';
+
+/** Rules applied to every new card, resolved when the card is created. */
+export interface NewCardRules {
+	/** Lower-cased properties Bases injected only from `or`/`not` filter branches. */
+	optionalFilterProperties: ReadonlySet<string>;
+	/** Lower-cased names of the properties displayed by the view. */
+	displayedProperties: ReadonlySet<string>;
+	defaults: Record<string, unknown>;
+}
+
+export interface QuickAddParent {
+	propertyName: string;
+	link: string;
+	copied?: Record<string, unknown>;
+}
 
 export interface QuickAddCtx {
 	app: App;
@@ -9,6 +25,7 @@ export interface QuickAddCtx {
 	prefsPropertyId: BasesPropertyId | null;
 	prefsSwimlanePropertyId: BasesPropertyId | null;
 	quickAddFolder: string | null;
+	resolveNewCardRules: () => Promise<NewCardRules>;
 }
 
 export interface QuickAddCallbacks {
@@ -149,7 +166,7 @@ export async function createQuickAddCard(
 	swimlaneValue: string | null,
 	ctx: QuickAddCtx,
 	cb: QuickAddCallbacks,
-	parent?: { propertyName: string; link: string },
+	parent?: QuickAddParent,
 ): Promise<void> {
 	const baseFileName = sanitizeBaseFileName(title);
 	if (!baseFileName) {
@@ -178,10 +195,16 @@ export async function createQuickAddCard(
 		new Notice(`Quick add folder not found: ${targetFolder}`);
 		return;
 	}
+	const rules = await ctx.resolveNewCardRules();
 	const createdFilePaths = new Set(ctx.app.vault.getMarkdownFiles().map((file) => file.path));
 	const createdFilePromise = waitForCreatedMarkdownFile(ctx.app, createdFilePaths, baseFileName);
 
+	// Precedence, strongest first: column, swimlane and parent link; values copied from
+	// the parent; what Bases wrote from the filters; default properties.
 	const setFrontmatter = (frontmatter: Record<string, unknown>): void => {
+		removeOptionalFilterValues(frontmatter, rules.optionalFilterProperties, rules.displayedProperties);
+		for (const [name, value] of Object.entries(parent?.copied ?? {})) setProperty(frontmatter, name, value);
+
 		if (columnValue === UNCATEGORIZED_LABEL) {
 			delete frontmatter[columnPropertyName];
 		} else {
@@ -189,11 +212,17 @@ export async function createQuickAddCard(
 		}
 		if (parent) frontmatter[parent.propertyName] = parent.link;
 
-		if (!swimlaneValue || !swimlanePropertyName) return;
-		if (swimlaneValue === UNCATEGORIZED_LABEL) {
-			delete frontmatter[swimlanePropertyName];
-		} else {
-			frontmatter[swimlanePropertyName] = swimlaneValue;
+		if (swimlaneValue && swimlanePropertyName) {
+			if (swimlaneValue === UNCATEGORIZED_LABEL) {
+				delete frontmatter[swimlanePropertyName];
+			} else {
+				frontmatter[swimlanePropertyName] = swimlaneValue;
+			}
+		}
+
+		const reserved = [columnPropertyName, swimlanePropertyName, parent?.propertyName].map((name) => name?.toLowerCase());
+		for (const [name, value] of Object.entries(rules.defaults)) {
+			if (!reserved.includes(name.toLowerCase())) setPropertyIfEmpty(frontmatter, name, value);
 		}
 	};
 

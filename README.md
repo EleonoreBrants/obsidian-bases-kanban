@@ -127,7 +127,33 @@ to turn the feature off.
   link is never rewritten.
 - Hover a card (always visible on touch devices) and select **+** to add a sub-page.
   It is created in the **Add card to column folder** folder, or next to the parent when
-  that is not set, with the parent link and the parent's column and swimlane.
+  that is not set, with the parent link and the parent's column and swimlane. Other
+  properties of the parent are copied according to **Copy from parent**
+  (see [New card properties](#new-card-properties)).
+
+### New card properties
+
+These options apply to cards created with a column's **+** button and to sub-pages
+created with a card's **+** button. The native **New** button of the Bases toolbar is
+handled by Bases itself and ignores them.
+
+- **Default properties**: one `Property = value` entry per line, for example
+  `Project = [[p1]]` or `Status = Todo`. `true`/`false` become booleans, numbers become
+  numbers, `a, b` becomes a list and anything else is text (wikilinks included). A default
+  only applies when the property is missing or empty on the new card, so the column,
+  swimlane, parent link, copied parent values and Base filter values always win. Options
+  are per view, so two views of the same Base can use different defaults.
+- **Copy from parent** (sub-pages): **Only listed properties** (default) copies just the
+  properties named in **Copy from parent properties**; **All except listed properties**
+  copies every other property of the parent. Empty values are never copied, and the parent
+  link, column and swimlane properties keep their own rules. Values are copied once, when
+  the sub-page is created.
+- **Filters with `or`**: Bases fills a new card with the values of every `==` condition in
+  the view's filters, even those inside an `or`, which the card does not need to match.
+  The plugin keeps only the values required by `and` conditions and removes the others
+  (for example `type = project` in `or: [type == "project", status != "Done"]`).
+  Properties displayed by the view keep their empty placeholder. If the filters cannot be
+  analysed (Base embedded in a note, unknown syntax), nothing is removed.
 
 ### Example
 

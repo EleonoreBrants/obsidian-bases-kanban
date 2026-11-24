@@ -8,6 +8,7 @@ import {
 	type CardCallbacks,
 } from './components/card.ts';
 import { QuickAddModal } from './quickAddModal.ts';
+import { resolveNewCardRules, resolveParentProperties } from './components/newCardRules.ts';
 import { arrangeSubpages, parseParentLinkText, type SubpageInfo } from './utils/subpages.ts';
 import {
 	createAddButton as createAddButtonEl,
@@ -1274,6 +1275,9 @@ export class KanbanView extends BasesView {
 		const target = resolved?.path === parentFile.path ? parentFile.basename : parentFile.path.replace(/\.md$/i, '');
 		const folder = this.getQuickAddFolder() ?? parentFile.parent?.path ?? '/';
 		const ctx = { ...this._buildQuickAddCtx(), quickAddFolder: folder };
+		const reserved = [this._prefsPropertyId, this._prefsSwimlanePropertyId]
+			.map((id) => (id ? parsePropertyId(id).name : ''))
+			.concat(parentName);
 
 		new QuickAddModal(this.app, {
 			columnValue,
@@ -1283,6 +1287,7 @@ export class KanbanView extends BasesView {
 				createQuickAddCardEl(title, columnValue, swimlaneValue, ctx, this._buildQuickAddCallbacks(), {
 					propertyName: parentName,
 					link: `[[${target}]]`,
+					copied: resolveParentProperties(this, parentFile, reserved),
 				}),
 		}).open();
 	}
@@ -1397,6 +1402,7 @@ export class KanbanView extends BasesView {
 			prefsPropertyId: this._prefsPropertyId,
 			prefsSwimlanePropertyId: this._prefsSwimlanePropertyId,
 			quickAddFolder: this.getQuickAddFolder(),
+			resolveNewCardRules: () => resolveNewCardRules(this),
 		};
 	}
 
@@ -2025,6 +2031,25 @@ export class KanbanView extends BasesView {
 				min: 8,
 				max: 40,
 				step: 2,
+			},
+			{
+				displayName: 'Copy from parent',
+				type: 'dropdown',
+				key: 'copyFromParentMode',
+				default: 'listed',
+				options: { listed: 'Only listed properties', except: 'All except listed properties' },
+			},
+			{
+				displayName: 'Copy from parent properties',
+				type: 'multitext',
+				key: 'copyFromParentProperties',
+				default: [],
+			},
+			{
+				displayName: 'Default properties',
+				type: 'multitext',
+				key: 'defaultProperties',
+				default: [],
 			},
 			{
 				displayName: 'Color rules',
