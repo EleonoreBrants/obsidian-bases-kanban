@@ -88,6 +88,27 @@ still move cards between columns and swimlanes, but their position follows the
 sort rather than where you drop them. Clear all sort rules to manually reorder
 cards again; saved manual ordering is retained while sorting is active.
 
+### Color banner
+
+Add one entry per rule in the **Color rules** view option, using the format
+`Property operator value -> color`. The first matching rule colors a strip across
+the top of the card; cards matching no rule are unchanged. Adjust the strip with
+**Color banner height (px)** or the `--obk-banner-height` CSS variable.
+
+```
+Projet = Alpha -> green
+Statut != Done -> #ff8800
+Échéance < 2026-12-01 -> var(--color-red)
+Notes empty -> gray
+```
+
+- Operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `empty`, `!empty`.
+- Comparisons ignore case. `=` also matches any item of a list, and a link such as
+  `[[Folder/Alpha|Shown]]` matches its note name or alias.
+- A bare property name means `note.<name>`; `file.` and `formula.` prefixes are accepted.
+- Colors: CSS names, hex, `rgb()`/`hsl()` or `var(--…)`. Invalid rules are ignored
+  and listed in the developer console.
+
 ### Example
 
 If your base has a "Status" property with values "To Do", "Doing", and "Done":

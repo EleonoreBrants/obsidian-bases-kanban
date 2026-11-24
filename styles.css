@@ -477,6 +477,19 @@
 	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
 }
 
+/* Colored strip across the top of a card; height is set by the "Color banner height" option. */
+.obk-card-banner {
+	width: calc(100% + 24px);
+	height: var(--obk-banner-height, 6px);
+	margin: -12px -12px 8px -12px;
+	border-top-left-radius: inherit;
+	border-top-right-radius: inherit;
+}
+
+.obk-card-banner + .obk-card-cover {
+	margin-top: 0;
+}
+
 .obk-card-cover {
 	display: block;
 	/* Bleed the cover to the card's inner border edge. Card has padding: 12px,

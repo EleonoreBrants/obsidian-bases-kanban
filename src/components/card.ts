@@ -2,8 +2,10 @@ import type { App, BasesEntry, BasesPropertyId, Component } from 'obsidian';
 import { Keymap, MarkdownRenderer, NullValue, StringValue } from 'obsidian';
 import type { TFile } from 'obsidian';
 import { CSS_CLASSES, DATA_ATTRIBUTES } from '../constants.ts';
+import { findRuleColor, type ColorRule } from '../utils/colorRules.ts';
 
 export interface CardRenderCtx {
+	colorRules: ColorRule[];
 	app: App;
 	component: Component;
 	groupByPropertyId: BasesPropertyId | null;
@@ -37,7 +39,13 @@ export function computeCardFingerprint(entry: BasesEntry, ctx: CardRenderCtx): s
 		const val = entry.getValue(ctx.imagePropertyId);
 		parts.push(val === null ? '' : val.toString());
 	}
+	parts.push(getCardBannerColor(entry, ctx) ?? '');
 	return parts.join('\x00');
+}
+
+export function getCardBannerColor(entry: BasesEntry, ctx: CardRenderCtx): string | null {
+	if (ctx.colorRules.length === 0) return null;
+	return findRuleColor(ctx.colorRules, (id) => entry.getValue(id));
 }
 
 export function renderCardTitle(titleEl: HTMLElement, entry: BasesEntry, ctx: CardRenderCtx): void {
@@ -91,6 +99,11 @@ export function createCard(entry: BasesEntry, ctx: CardRenderCtx, cb: CardCallba
 	const cardEl = createDiv({ cls: CSS_CLASSES.CARD });
 	const filePath = entry.file.path;
 	cardEl.setAttribute(DATA_ATTRIBUTES.ENTRY_PATH, filePath);
+
+	const bannerColor = getCardBannerColor(entry, ctx);
+	if (bannerColor) {
+		cardEl.createDiv({ cls: CSS_CLASSES.CARD_BANNER }).style.backgroundColor = bannerColor;
+	}
 
 	if (ctx.imagePropertyId) {
 		const coverEl = cardEl.createDiv({ cls: CSS_CLASSES.CARD_COVER });

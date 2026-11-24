@@ -88,6 +88,7 @@ export const CSS_CLASSES = {
 	CARD: 'obk-card',
 	CARD_TITLE: 'obk-card-title',
 	CARD_PREVIEW: 'obk-card-preview',
+	CARD_BANNER: 'obk-card-banner',
 	CARD_COVER: 'obk-card-cover',
 	CARD_COVER_FIT_COVER: 'obk-card-cover--fit-cover',
 	CARD_COVER_FIT_CONTAIN: 'obk-card-cover--fit-contain',

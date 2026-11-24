@@ -30,6 +30,7 @@ import {
 	type RowCallbacks,
 } from './components/row.ts';
 import type { TFile } from 'obsidian';
+import { parseColorRules, type ColorRule } from './utils/colorRules.ts';
 import Sortable from 'sortablejs';
 import {
 	COLOR_PALETTE,
@@ -138,6 +139,8 @@ export class KanbanView extends BasesView {
 	private _lastSwimlanePropertyId: BasesPropertyId | null | undefined = undefined;
 	private _lastQuickAddFolder: string | null | undefined = undefined;
 	private _lastAxisSortKey = '';
+	private _lastColorRulesKey = '';
+	private _colorRules: ColorRule[] = [];
 	private _cardFingerprints: Map<string, string> = new Map();
 	// Column values empty across the whole board (every swimlane). Recomputed each
 	// render() and read via _buildColumnCtx so components can show a remove button
@@ -540,8 +543,14 @@ export class KanbanView extends BasesView {
 			const axisSortChanged = axisSortKey !== this._lastAxisSortKey;
 			this._lastAxisSortKey = axisSortKey;
 
+			const colorRulesChanged = this._refreshColorRules();
+			const rawBannerHeight = Number(this.config?.get('bannerHeight'));
+			const bannerHeight = Number.isFinite(rawBannerHeight) && rawBannerHeight > 0 ? rawBannerHeight : 6;
+			this.containerEl.style.setProperty('--obk-banner-height', `${bannerHeight}px`);
+
 			const existingBoard = this.containerEl.querySelector<HTMLElement>(`.${CSS_CLASSES.BOARD}`);
 			const optionsChanged =
+				colorRulesChanged ||
 				orderChanged ||
 				wrapChanged ||
 				cardTitleChanged ||
@@ -1132,8 +1141,21 @@ export class KanbanView extends BasesView {
 		});
 	}
 
+	/** Re-parse the "Color rules" option; returns true when it changed since the last render. */
+	private _refreshColorRules(): boolean {
+		const raw: unknown = this.config?.get('colorRules');
+		const key = JSON.stringify(raw ?? null);
+		if (key === this._lastColorRulesKey) return false;
+		this._lastColorRulesKey = key;
+		const { rules, invalid } = parseColorRules(raw);
+		this._colorRules = rules;
+		if (invalid.length > 0) console.warn('KanbanView: ignored invalid color rules', invalid);
+		return true;
+	}
+
 	private _buildCardCtx(): CardRenderCtx {
 		return {
+			colorRules: this._colorRules,
 			app: this.app,
 			component: this,
 			groupByPropertyId: this.groupByPropertyId,
@@ -1827,6 +1849,21 @@ export class KanbanView extends BasesView {
 				min: 0.25,
 				max: 2.5,
 				step: 0.05,
+			},
+			{
+				displayName: 'Color rules',
+				type: 'multitext',
+				key: 'colorRules',
+				default: [],
+			},
+			{
+				displayName: 'Color banner height (px)',
+				type: 'slider',
+				key: 'bannerHeight',
+				default: 6,
+				min: 2,
+				max: 24,
+				step: 1,
 			},
 			{
 				displayName: 'Wrap property values',
